@@ -1,0 +1,1 @@
+*/5 * * * * root /opt/birdsnet-dash/bin/birdsnet-dash generate --output-dir /opt/birdsnet-dash/site

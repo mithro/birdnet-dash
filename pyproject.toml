@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "birdsnet-dash"
+version = "0.1.0"
+description = "BirdNET-Pi aggregator dashboard for birds.mithis.com"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "httpx",
+    "jinja2",
+]
+
+[project.scripts]
+birdsnet-dash = "birdsnet_dash.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/birdsnet_dash"]
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
