@@ -3,62 +3,116 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>birds.mithis.com — BirdNET-Pi Dashboard</title>
+<title>birds.mithis.com</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; padding: 1rem; }
-  h1 { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; }
-  .sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; max-width: 1400px; margin: 0 auto; }
-  .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); overflow: hidden; }
-  .card-header { padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; color: #333; padding: 1rem; max-width: 1000px; margin: 0 auto; }
+  h1 { margin-bottom: 1.5rem; font-size: 1.4rem; }
+  .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; overflow: hidden; }
+  .card-header { padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; background: #fafafa; }
   .card-header h2 { font-size: 1.1rem; }
-  .status { display: flex; gap: 0.75rem; align-items: center; font-size: 0.85rem; }
-  .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
-  .status-dot.up { background: #22c55e; }
-  .status-dot.down { background: #ef4444; }
-  .status-label { color: #666; }
-  .links { padding: 0.5rem 1rem; display: flex; gap: 1rem; font-size: 0.85rem; border-bottom: 1px solid #eee; flex-wrap: wrap; }
-  .links a { color: #2563eb; text-decoration: none; }
-  .links a:hover { text-decoration: underline; }
-  .iframe-wrap { width: 100%; height: 500px; }
-  .iframe-wrap iframe { width: 100%; height: 100%; border: none; }
-  .footer { text-align: center; margin-top: 2rem; color: #999; font-size: 0.8rem; }
+  .card-header a { color: #2563eb; text-decoration: none; font-size: 0.85rem; }
+  .card-header a:hover { text-decoration: underline; }
+  .ifaces { display: flex; gap: 0.6rem; align-items: center; font-size: 0.8rem; color: #666; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 2px; }
+  .dot.up { background: #22c55e; }
+  .dot.down { background: #ef4444; }
+  .stats { display: flex; gap: 0; border-bottom: 1px solid #eee; }
+  .stat { flex: 1; padding: 0.6rem 1rem; text-align: center; border-right: 1px solid #eee; }
+  .stat:last-child { border-right: none; }
+  .stat-value { font-size: 1.5rem; font-weight: 600; color: #111; }
+  .stat-label { font-size: 0.7rem; text-transform: uppercase; color: #888; letter-spacing: 0.05em; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; }
+  .section { padding: 0.75rem 1rem; }
+  .section-title { font-size: 0.75rem; text-transform: uppercase; color: #888; letter-spacing: 0.05em; margin-bottom: 0.5rem; font-weight: 600; }
+  .species-row { display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+  .species-row:last-child { border-bottom: none; }
+  .species-name { color: #333; }
+  .species-count { color: #888; font-variant-numeric: tabular-nums; }
+  .detection-row { display: flex; gap: 0.75rem; padding: 0.25rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+  .detection-row:last-child { border-bottom: none; }
+  .detection-time { color: #888; font-variant-numeric: tabular-nums; min-width: 5em; }
+  .detection-species { color: #333; flex: 1; }
+  .detection-conf { color: #888; font-variant-numeric: tabular-nums; }
+  .offline { padding: 2rem 1rem; text-align: center; color: #999; }
+  .col-divider { border-right: 1px solid #eee; }
+  .footer { text-align: center; margin-top: 1rem; color: #aaa; font-size: 0.75rem; }
+  @media (max-width: 600px) {
+    .two-col { grid-template-columns: 1fr; }
+    .col-divider { border-right: none; border-bottom: 1px solid #eee; }
+  }
 </style>
 </head>
 <body>
 
-<h1>BirdNET-Pi Dashboard</h1>
+<h1>birds.mithis.com</h1>
 
-<div class="sites">
 {% for site in sites %}
-  <div class="card">
-    <div class="card-header">
+<div class="card">
+  <div class="card-header">
+    <div>
       <h2>{{ site.name }}</h2>
-      <div class="status">
+      <div class="ifaces">
         {% for iface_name, iface in site.interfaces.items() %}
-        <span>
-          <span class="status-dot {{ 'up' if iface.up else 'down' }}"></span>
-          <span class="status-label">{{ iface_name }}</span>
-        </span>
+        <span><span class="dot {{ 'up' if iface.up else 'down' }}"></span>{{ iface_name }}</span>
         {% endfor %}
       </div>
     </div>
-    <div class="links">
-      <a href="https://{{ site.host }}/" target="_blank">Open (proxy)</a>
-      {% for iface_name, iface in site.interfaces.items() %}
-      <a href="https://{{ iface.hostname }}/" target="_blank">{{ iface_name }}</a>
-      {% endfor %}
+    {% if site.best_host %}
+    <a href="https://{{ site.best_host }}/" target="_blank">Open BirdNET-Pi</a>
+    {% endif %}
+  </div>
+
+  {% if site.stats %}
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value">{{ site.stats.today }}</div>
+      <div class="stat-label">Today</div>
     </div>
-    <div class="iframe-wrap">
-      {% if site.iframe_host %}
-      <iframe src="https://{{ site.iframe_host }}/views.php?view=Today" loading="lazy"></iframe>
-      {% else %}
-      <p style="padding: 1rem; color: #999;">All interfaces down</p>
-      {% endif %}
+    <div class="stat">
+      <div class="stat-value">{{ site.stats.last_hour }}</div>
+      <div class="stat-label">Last Hour</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ site.stats.species_today }}</div>
+      <div class="stat-label">Species Today</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ site.stats.total }}</div>
+      <div class="stat-label">All Time</div>
     </div>
   </div>
-{% endfor %}
+
+  <div class="two-col">
+    <div class="section col-divider">
+      <div class="section-title">Species Detected Today</div>
+      {% for s in site.species %}
+      <div class="species-row">
+        <span class="species-name">{{ s.species }}</span>
+        <span class="species-count">{{ s.count }}</span>
+      </div>
+      {% else %}
+      <div style="color: #999; font-size: 0.85rem;">No detections yet</div>
+      {% endfor %}
+    </div>
+    <div class="section">
+      <div class="section-title">Recent Detections</div>
+      {% for d in site.detections %}
+      <div class="detection-row">
+        <span class="detection-time">{{ d.time }}</span>
+        <span class="detection-species">{{ d.species }}</span>
+        <span class="detection-conf">{{ d.confidence }}%</span>
+      </div>
+      {% else %}
+      <div style="color: #999; font-size: 0.85rem;">No detections yet</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="offline">Site unreachable</div>
+  {% endif %}
 </div>
+{% endfor %}
 
 <p class="footer">Last updated: {{ generated_at }}</p>
 

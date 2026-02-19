@@ -1,6 +1,7 @@
 import httpx
 
 from birdsnet_dash.config import INTERFACES, SITES
+from birdsnet_dash.scrape import build_species_summary, fetch_detections, fetch_stats
 
 
 def check_host(hostname: str) -> bool:
@@ -45,33 +46,33 @@ def longest_common_suffix(hostnames: list[str]) -> str:
     return ".".join(reversed(common))
 
 
-def pick_iframe_host(site: dict) -> str | None:
-    """Pick the best hostname for the iframe.
+def pick_best_host(site: dict) -> str | None:
+    """Pick the best hostname from reachable interfaces.
 
     Uses the longest common DNS suffix of all reachable interface hostnames.
 
-    >>> pick_iframe_host({"interfaces": {
+    >>> pick_best_host({"interfaces": {
     ...     "ipv4.eth0": {"hostname": "ipv4.eth0.h.com", "up": True},
     ...     "ipv6.eth0": {"hostname": "ipv6.eth0.h.com", "up": True},
     ...     "ipv4.wlan0": {"hostname": "ipv4.wlan0.h.com", "up": True},
     ...     "ipv6.wlan0": {"hostname": "ipv6.wlan0.h.com", "up": True},
     ... }})
     'h.com'
-    >>> pick_iframe_host({"interfaces": {
+    >>> pick_best_host({"interfaces": {
     ...     "ipv4.eth0": {"hostname": "ipv4.eth0.h.com", "up": False},
     ...     "ipv6.eth0": {"hostname": "ipv6.eth0.h.com", "up": False},
     ...     "ipv4.wlan0": {"hostname": "ipv4.wlan0.h.com", "up": True},
     ...     "ipv6.wlan0": {"hostname": "ipv6.wlan0.h.com", "up": True},
     ... }})
     'wlan0.h.com'
-    >>> pick_iframe_host({"interfaces": {
+    >>> pick_best_host({"interfaces": {
     ...     "ipv4.eth0": {"hostname": "ipv4.eth0.h.com", "up": False},
     ...     "ipv6.eth0": {"hostname": "ipv6.eth0.h.com", "up": False},
     ...     "ipv4.wlan0": {"hostname": "ipv4.wlan0.h.com", "up": True},
     ...     "ipv6.wlan0": {"hostname": "ipv6.wlan0.h.com", "up": False},
     ... }})
     'ipv4.wlan0.h.com'
-    >>> pick_iframe_host({"interfaces": {
+    >>> pick_best_host({"interfaces": {
     ...     "ipv4.eth0": {"hostname": "ipv4.eth0.h.com", "up": False},
     ...     "ipv6.eth0": {"hostname": "ipv6.eth0.h.com", "up": False},
     ...     "ipv4.wlan0": {"hostname": "ipv4.wlan0.h.com", "up": False},
@@ -88,7 +89,7 @@ def pick_iframe_host(site: dict) -> str | None:
 
 
 def check_all_sites() -> list[dict]:
-    """Check all interfaces for each site. Returns sites with health status per interface."""
+    """Check all interfaces for each site, then scrape bird data from reachable ones."""
     results = []
     for site in SITES:
         host = site["host"]
@@ -97,6 +98,19 @@ def check_all_sites() -> list[dict]:
             fqdn = f"{iface}.{host}"
             interfaces[iface] = {"hostname": fqdn, "up": check_host(fqdn)}
         result = {**site, "interfaces": interfaces}
-        result["iframe_host"] = pick_iframe_host(result)
+        best_host = pick_best_host(result)
+        result["best_host"] = best_host
+
+        # Scrape bird data if any interface is reachable
+        if best_host:
+            result["stats"] = fetch_stats(best_host)
+            detections = fetch_detections(best_host, limit=50)
+            result["detections"] = detections[:10]
+            result["species"] = build_species_summary(detections)
+        else:
+            result["stats"] = None
+            result["detections"] = []
+            result["species"] = []
+
         results.append(result)
     return results
