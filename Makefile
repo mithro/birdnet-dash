@@ -14,7 +14,7 @@ generate: $(VENV)/.stamp
 
 .PHONY: install
 install:  ## Install to /opt/birdsnet-dash with uv venv + config files
-	sudo mkdir -p $(INSTALL_DIR)/site
+	sudo mkdir -p $(INSTALL_DIR)/site $(INSTALL_DIR)/data
 	sudo uv venv --allow-existing $(INSTALL_DIR)
 	sudo uv pip install --python $(INSTALL_DIR)/bin/python .
 	sudo cp -r templates $(INSTALL_DIR)/

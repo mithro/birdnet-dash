@@ -14,13 +14,19 @@ def main():
         default="./site",
         help="Directory to write index.html (default: ./site)",
     )
+    gen.add_argument(
+        "--data-dir",
+        default=None,
+        help="Directory for persistent data like species_seen.json "
+        "(default: data/ sibling of output dir)",
+    )
 
     args = parser.parse_args()
 
     if args.command == "generate":
         # Suppress InsecureRequestWarning from urllib3 (httpx verify=False)
         warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-        generate(args.output_dir)
+        generate(args.output_dir, data_dir=args.data_dir)
     else:
         parser.print_help()
 
