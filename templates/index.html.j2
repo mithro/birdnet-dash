@@ -262,7 +262,7 @@
       {% if ns.scientific_name %}
       <div class="alert-sci">{{ ns.scientific_name }}</div>
       {% endif %}
-      <div class="alert-meta">{{ ns.site_name }}</div>
+      <div class="alert-meta">{{ ns.site_names | join(', ') }}</div>
     </div>
   </div>
 </div>
@@ -284,7 +284,7 @@
       {% if r.scientific_name %}
       <div class="disc-sci">{{ r.scientific_name }}</div>
       {% endif %}
-      <div class="disc-meta">{{ r.site_slug }} &middot; {{ r.first_seen[:10] }}</div>
+      <div class="disc-meta">{{ r.sites | map(attribute='slug') | join(', ') }} &middot; {{ r.first_seen[:10] }}</div>
     </div>
   </div>
   {% endfor %}

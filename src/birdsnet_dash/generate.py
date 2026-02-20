@@ -62,9 +62,11 @@ def detect_new_species(sites: list[dict], history: dict, now: str) -> list[dict]
 
     On first run (empty history for a site), seeds all species without marking as new.
     On subsequent runs, species not in history are flagged as new.
-    Mutates history dict in place. Returns list of new species dicts.
+    Mutates history dict in place. Returns list of new species dicts,
+    grouped by species name (one entry per species with a list of sites).
     """
-    new_species = []
+    # First pass: update history and collect raw new sightings
+    raw_new: list[dict] = []
     for site in sites:
         slug = site["slug"]
         site_name = site["name"]
@@ -87,37 +89,83 @@ def detect_new_species(sites: list[dict], history: dict, now: str) -> list[dict]
                     "image_url": s.get("image_url", ""),
                     "first_seen": now,
                 }
-                new_species.append({
+                raw_new.append({
                     "species": name,
                     "scientific_name": s.get("scientific_name", ""),
                     "image_url": s.get("image_url", ""),
                     "site_name": site_name,
                     "site_slug": slug,
-                    "first_seen": now,
                 })
-    return new_species
+
+    # Second pass: group by species name
+    grouped: dict[str, dict] = {}
+    for entry in raw_new:
+        name = entry["species"]
+        if name not in grouped:
+            grouped[name] = {
+                "species": name,
+                "scientific_name": entry["scientific_name"],
+                "image_url": entry["image_url"],
+                "site_names": [],
+            }
+        grouped[name]["site_names"].append(entry["site_name"])
+        if not grouped[name]["image_url"] and entry["image_url"]:
+            grouped[name]["image_url"] = entry["image_url"]
+
+    return list(grouped.values())
 
 
 def build_recent_new_species(history: dict, days: int = 7) -> list[dict]:
-    """Scan history for species with first_seen in the last N days."""
+    """Scan history for species with first_seen in the last N days.
+
+    Groups by species name so a bird detected at multiple sites produces
+    one entry with a list of sites, sorted by earliest first_seen.
+
+    >>> build_recent_new_species({
+    ...     "site-a": {"Dove": {"first_seen": "2099-01-01T00:00:00+00:00", "scientific_name": "D. dove", "image_url": ""}},
+    ...     "site-b": {"Dove": {"first_seen": "2099-01-02T00:00:00+00:00", "scientific_name": "D. dove", "image_url": ""}},
+    ...     "site-c": {"Owl": {"first_seen": "2099-01-03T00:00:00+00:00", "scientific_name": "O. owl", "image_url": ""}},
+    ... }, days=50000)
+    [{'species': 'Owl', 'scientific_name': 'O. owl', 'image_url': '', 'sites': [{'slug': 'site-c', 'first_seen': '2099-01-03T00:00:00+00:00'}], 'first_seen': '2099-01-03T00:00:00+00:00'}, {'species': 'Dove', 'scientific_name': 'D. dove', 'image_url': '', 'sites': [{'slug': 'site-a', 'first_seen': '2099-01-01T00:00:00+00:00'}, {'slug': 'site-b', 'first_seen': '2099-01-02T00:00:00+00:00'}], 'first_seen': '2099-01-01T00:00:00+00:00'}]
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    recent = []
+
+    # Collect all recent sightings grouped by species name
+    grouped: dict[str, dict] = {}
     for slug, species_dict in history.items():
         for name, info in species_dict.items():
             try:
                 first_seen = datetime.fromisoformat(info["first_seen"])
             except (KeyError, ValueError):
                 continue
-            if first_seen >= cutoff:
-                recent.append({
+            if first_seen < cutoff:
+                continue
+            if name not in grouped:
+                grouped[name] = {
                     "species": name,
                     "scientific_name": info.get("scientific_name", ""),
                     "image_url": info.get("image_url", ""),
-                    "site_slug": slug,
+                    "sites": [],
                     "first_seen": info["first_seen"],
-                })
-    recent.sort(key=lambda r: r["first_seen"], reverse=True)
-    return recent
+                }
+            grouped[name]["sites"].append({
+                "slug": slug,
+                "first_seen": info["first_seen"],
+            })
+            # Use the image from whichever site has one
+            if not grouped[name]["image_url"] and info.get("image_url"):
+                grouped[name]["image_url"] = info["image_url"]
+            # Track the earliest first_seen across all sites
+            if info["first_seen"] < grouped[name]["first_seen"]:
+                grouped[name]["first_seen"] = info["first_seen"]
+
+    # Sort sites within each species by first_seen
+    for entry in grouped.values():
+        entry["sites"].sort(key=lambda s: s["first_seen"])
+
+    # Sort species by most recent first_seen (newest discoveries first)
+    result = sorted(grouped.values(), key=lambda r: r["first_seen"], reverse=True)
+    return result
 
 
 def generate(output_dir: str, data_dir: str | None = None) -> None:
