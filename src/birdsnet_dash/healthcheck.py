@@ -1,7 +1,12 @@
 import httpx
 
 from birdsnet_dash.config import INTERFACES, SITES
-from birdsnet_dash.scrape import build_species_summary, fetch_detections, fetch_stats
+from birdsnet_dash.scrape import (
+    build_species_summary,
+    fetch_detections,
+    fetch_species_list,
+    fetch_stats,
+)
 
 
 def check_host(hostname: str) -> bool:
@@ -104,9 +109,10 @@ def check_all_sites() -> list[dict]:
         # Scrape bird data if any interface is reachable
         if best_host:
             result["stats"] = fetch_stats(best_host)
-            detections = fetch_detections(best_host, limit=50)
-            result["detections"] = detections[:10]
-            result["species"] = build_species_summary(detections)
+            species_names = fetch_species_list(best_host)
+            detections = fetch_detections(best_host, limit=20)
+            result["detections"] = detections
+            result["species"] = build_species_summary(species_names, detections)
         else:
             result["stats"] = None
             result["detections"] = []
