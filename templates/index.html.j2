@@ -230,15 +230,6 @@
     font-weight: 600; font-size: 0.75rem; white-space: nowrap;
   }
 
-  /* Yesterday species tags */
-  .yesterday-tags {
-    display: flex; flex-wrap: wrap; gap: 0.4rem;
-  }
-  .yesterday-tag {
-    background: #f0f7f4; border: 1px solid #d8f3dc; border-radius: 6px;
-    padding: 0.25rem 0.6rem; font-size: 0.8rem; color: #2d6a4f;
-  }
-
   .offline {
     padding: 3rem 1rem; text-align: center; color: #999;
     font-size: 1rem;
@@ -381,9 +372,23 @@
   {% if site.yesterday_species %}
   <div class="site-section" style="border-top: 1px solid #e8f5e9;">
     <div class="site-section-title">Species Detected Yesterday</div>
-    <div class="yesterday-tags">
-      {% for name in site.yesterday_species %}
-      <span class="yesterday-tag">{{ name }}</span>
+    <div class="species-grid">
+      {% for s in site.yesterday_species %}
+      <a class="species-card" href="https://{{ site.best_host }}/views.php?view=Species+Stats&species={{ s.species | urlencode }}" target="_blank" rel="noopener">
+        {% if s.image_url %}
+        <img class="sp-img" src="{{ s.image_url }}" alt="{{ s.species }}" loading="lazy">
+        {% else %}
+        <div class="sp-img-placeholder">&#x1f426;</div>
+        {% endif %}
+        <div class="sp-name">{{ s.species }}</div>
+        {% if s.scientific_name %}
+        <div class="sp-sci">{{ s.scientific_name }}</div>
+        {% endif %}
+        {% if s.recent_count > 0 %}
+        <div class="sp-count">{{ s.recent_count }} recent</div>
+        <div class="sp-conf {% if s.max_confidence >= 80 %}conf-high{% elif s.max_confidence >= 60 %}conf-mid{% else %}conf-low{% endif %}">&#x25cf; {{ s.max_confidence }}%</div>
+        {% endif %}
+      </a>
       {% endfor %}
     </div>
   </div>

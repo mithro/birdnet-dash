@@ -117,10 +117,11 @@ def check_all_sites() -> list[dict]:
             result["species"] = build_species_summary(
                 species_names, detections, hostname=best_host
             )
-            # Yesterday's species (directory listing only, no metadata fetch)
+            # Yesterday's species with full metadata (same format as today)
             yesterday = (date.today() - timedelta(days=1)).isoformat()
-            result["yesterday_species"] = fetch_species_list(
-                best_host, for_date=yesterday
+            yesterday_names = fetch_species_list(best_host, for_date=yesterday)
+            result["yesterday_species"] = build_species_summary(
+                yesterday_names, [], hostname=best_host
             )
         else:
             result["stats"] = None
