@@ -331,21 +331,33 @@ def build_species_summary(
         if not det_data[name]["wikipedia_url"] and d.get("wikipedia_url"):
             det_data[name]["wikipedia_url"] = d["wikipedia_url"]
 
-    # For species without metadata, fetch one detection to get image/sci_name/wiki
+    # For species without metadata, fetch in parallel
     if hostname:
-        for name in species_names:
-            if name not in det_data or not det_data[name]["image_url"]:
-                meta = fetch_species_metadata(hostname, name)
-                if name not in det_data:
-                    det_data[name] = {
-                        "recent_count": 0,
-                        "max_confidence": 0,
-                        **meta,
-                    }
-                else:
-                    for key in ("scientific_name", "image_url", "wikipedia_url"):
-                        if not det_data[name][key] and meta[key]:
-                            det_data[name][key] = meta[key]
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        needs_meta = [
+            name for name in species_names
+            if name not in det_data or not det_data[name]["image_url"]
+        ]
+        if needs_meta:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = {
+                    pool.submit(fetch_species_metadata, hostname, name): name
+                    for name in needs_meta
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    meta = future.result()
+                    if name not in det_data:
+                        det_data[name] = {
+                            "recent_count": 0,
+                            "max_confidence": 0,
+                            **meta,
+                        }
+                    else:
+                        for key in ("scientific_name", "image_url", "wikipedia_url"):
+                            if not det_data[name][key] and meta[key]:
+                                det_data[name][key] = meta[key]
 
     # Build result: all species from directory, enriched with detection data
     all_species = set(species_names) | set(det_data.keys())

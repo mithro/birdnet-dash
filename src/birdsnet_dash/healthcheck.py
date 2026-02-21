@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 import httpx
@@ -95,39 +96,63 @@ def pick_best_host(site: dict) -> str | None:
     return longest_common_suffix(up_hostnames) or None
 
 
-def check_all_sites() -> list[dict]:
-    """Check all interfaces for each site, then scrape bird data from reachable ones."""
-    results = []
-    for site in SITES:
-        host = site["host"]
-        interfaces = {}
+def _check_site(site: dict) -> dict:
+    """Check one site: probe interfaces, scrape bird data if reachable."""
+    host = site["host"]
+
+    # Probe all interfaces concurrently
+    interfaces = {}
+    with ThreadPoolExecutor(max_workers=len(INTERFACES)) as pool:
+        futures = {}
         for iface in INTERFACES:
             fqdn = f"{iface}.{host}"
-            interfaces[iface] = {"hostname": fqdn, "up": check_host(fqdn)}
-        result = {**site, "interfaces": interfaces}
-        best_host = pick_best_host(result)
-        result["best_host"] = best_host
+            futures[pool.submit(check_host, fqdn)] = (iface, fqdn)
+        for future in as_completed(futures):
+            iface, fqdn = futures[future]
+            interfaces[iface] = {"hostname": fqdn, "up": future.result()}
 
-        # Scrape bird data if any interface is reachable
-        if best_host:
-            result["stats"] = fetch_stats(best_host)
-            species_names = fetch_species_list(best_host)
-            detections = fetch_detections(best_host, limit=20)
-            result["detections"] = detections
-            result["species"] = build_species_summary(
-                species_names, detections, hostname=best_host
-            )
-            # Yesterday's species with full metadata (same format as today)
-            yesterday = (date.today() - timedelta(days=1)).isoformat()
-            yesterday_names = fetch_species_list(best_host, for_date=yesterday)
-            result["yesterday_species"] = build_species_summary(
-                yesterday_names, [], hostname=best_host
-            )
-        else:
-            result["stats"] = None
-            result["detections"] = []
-            result["species"] = []
-            result["yesterday_species"] = []
+    result = {**site, "interfaces": interfaces}
+    best_host = pick_best_host(result)
+    result["best_host"] = best_host
 
-        results.append(result)
-    return results
+    if not best_host:
+        result["stats"] = None
+        result["detections"] = []
+        result["species"] = []
+        result["yesterday_species"] = []
+        return result
+
+    # Fetch stats, species list, detections, and yesterday list concurrently
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_stats = pool.submit(fetch_stats, best_host)
+        f_species = pool.submit(fetch_species_list, best_host)
+        f_detect = pool.submit(fetch_detections, best_host, 20)
+        f_yester = pool.submit(fetch_species_list, best_host, yesterday)
+
+    result["stats"] = f_stats.result()
+    species_names = f_species.result()
+    detections = f_detect.result()
+    result["detections"] = detections
+    yesterday_names = f_yester.result()
+
+    # Build species summaries (metadata fetches parallelised internally)
+    result["species"] = build_species_summary(
+        species_names, detections, hostname=best_host
+    )
+    result["yesterday_species"] = build_species_summary(
+        yesterday_names, [], hostname=best_host
+    )
+    return result
+
+
+def check_all_sites() -> list[dict]:
+    """Check all interfaces for each site, then scrape bird data from reachable ones."""
+    with ThreadPoolExecutor(max_workers=len(SITES)) as pool:
+        futures = {pool.submit(_check_site, site): site["slug"] for site in SITES}
+        results_by_slug = {}
+        for future in as_completed(futures):
+            slug = futures[future]
+            results_by_slug[slug] = future.result()
+    # Preserve original site order
+    return [results_by_slug[site["slug"]] for site in SITES]
