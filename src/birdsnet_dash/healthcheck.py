@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import httpx
 
 from birdsnet_dash.config import INTERFACES, SITES
@@ -112,11 +114,19 @@ def check_all_sites() -> list[dict]:
             species_names = fetch_species_list(best_host)
             detections = fetch_detections(best_host, limit=20)
             result["detections"] = detections
-            result["species"] = build_species_summary(species_names, detections)
+            result["species"] = build_species_summary(
+                species_names, detections, hostname=best_host
+            )
+            # Yesterday's species (directory listing only, no metadata fetch)
+            yesterday = (date.today() - timedelta(days=1)).isoformat()
+            result["yesterday_species"] = fetch_species_list(
+                best_host, for_date=yesterday
+            )
         else:
             result["stats"] = None
             result["detections"] = []
             result["species"] = []
+            result["yesterday_species"] = []
 
         results.append(result)
     return results

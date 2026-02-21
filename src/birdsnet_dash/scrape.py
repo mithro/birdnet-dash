@@ -63,22 +63,25 @@ def parse_stats_html(html: str) -> dict | None:
     }
 
 
-def fetch_species_list(hostname: str) -> list[str]:
-    """Fetch list of species detected today from Caddy directory listing.
+def fetch_species_list(hostname: str, for_date: str | None = None) -> list[str]:
+    """Fetch list of species detected on a given date from Caddy directory listing.
 
     BirdNET-Pi stores detections in /By_Date/{date}/{species}/ directories.
     Caddy's file server lists these as folder links, giving us a complete
     species list without needing to download all detection records.
+
+    If for_date is None, uses today's date.
 
     >>> parse_species_dirs('<a href="./Spotted_Dove/">Spotted_Dove</a><a href="./Barn_Owl/">Barn_Owl</a>')
     ['Barn Owl', 'Spotted Dove']
     >>> parse_species_dirs('<a href="../">..</a>')
     []
     """
-    today = date.today().isoformat()
+    if for_date is None:
+        for_date = date.today().isoformat()
     try:
         resp = httpx.get(
-            f"https://{hostname}/By_Date/{today}/",
+            f"https://{hostname}/By_Date/{for_date}/",
             timeout=5,
             verify=False,
         )
@@ -135,9 +138,9 @@ def parse_detections_html(html: str) -> list[dict]:
     - display_limit format: species in <a class="a2">, time inline
 
     >>> parse_detections_html('<tr class="relative" id="1"><td class="relative"><div class="centered_image_container">14:53:59<br><b><a class="a2" href="x">Spotted Dove</a></b><br><i>Streptopelia chinensis</i><br><b>Confidence:</b> 75%<br></div></td>')
-    [{'species': 'Spotted Dove', 'scientific_name': 'Streptopelia chinensis', 'time': '14:53:59', 'confidence': 75, 'image_url': ''}]
-    >>> parse_detections_html('<tr class="relative" id="1"><td>10:00:00<br></td><td id="recent_detection_middle_td"><div><div><img style="float:left" src="https://example.com/bird.jpg" id="birdimage" class="img1"></div><div><form><button class="a2" type="submit" name="species" value="Magpie">Magpie</button><br><i>Gymnorhina tibicen</i></form></div></div></td><td><b>Confidence:</b>88%<br></td>')
-    [{'species': 'Magpie', 'scientific_name': 'Gymnorhina tibicen', 'time': '10:00:00', 'confidence': 88, 'image_url': 'https://example.com/bird.jpg'}]
+    [{'species': 'Spotted Dove', 'scientific_name': 'Streptopelia chinensis', 'time': '14:53:59', 'confidence': 75, 'image_url': '', 'wikipedia_url': '', 'filename': ''}]
+    >>> parse_detections_html('<tr class="relative" id="1"><td>10:00:00<br></td><td id="recent_detection_middle_td"><div><div><img style="float:left" src="https://example.com/bird.jpg" id="birdimage" class="img1"></div><div><form><button class="a2" type="submit" name="species" value="Magpie">Magpie</button><br><i>\\nGymnorhina tibicen\\t<br></i></form></div></div></td><td><b>Confidence:</b>88%<br></td><td><a href="index.php?filename=Magpie-88-2026-02-21-birdnet-10:00:00.mp3">x</a><a href="https://wikipedia.org/wiki/Gymnorhina_tibicen">w</a></td>')
+    [{'species': 'Magpie', 'scientific_name': 'Gymnorhina tibicen', 'time': '10:00:00', 'confidence': 88, 'image_url': 'https://example.com/bird.jpg', 'wikipedia_url': 'https://wikipedia.org/wiki/Gymnorhina_tibicen', 'filename': 'Magpie-88-2026-02-21-birdnet-10:00:00.mp3'}]
     """
     detections = []
     # Each detection is in a <tr class="relative"> block
@@ -145,10 +148,13 @@ def parse_detections_html(html: str) -> list[dict]:
     for row in rows[1:]:  # skip before first match
         # Species: match both <a class="a2">Name</a> and <button class="a2">Name</button>
         species_match = re.search(r'class="a2"[^>]*>([^<]+)</', row)
-        sci_match = re.search(r"<i>([^<]+)</i>", row)
+        # Scientific name: <i> may contain <br> and other tags; capture text before first <
+        sci_match = re.search(r"<i>\s*([^<]+)", row)
         time_match = re.search(r"(\d{2}:\d{2}:\d{2})", row)
         conf_match = re.search(r"Confidence:</b>\s*(\d+)%", row)
         img_match = re.search(r'src="([^"]+)"[^>]*class="img1"', row)
+        wiki_match = re.search(r'href="(https://wikipedia\.org/wiki/[^"]+)"', row)
+        file_match = re.search(r'href="index\.php\?filename=([^"]+)"', row)
 
         if species_match:
             detections.append({
@@ -157,13 +163,47 @@ def parse_detections_html(html: str) -> list[dict]:
                 "time": time_match.group(1) if time_match else "",
                 "confidence": int(conf_match.group(1)) if conf_match else 0,
                 "image_url": img_match.group(1) if img_match else "",
+                "wikipedia_url": wiki_match.group(1) if wiki_match else "",
+                "filename": file_match.group(1) if file_match else "",
             })
     return detections
+
+
+def fetch_species_metadata(hostname: str, species_name: str) -> dict:
+    """Fetch metadata for a single species by searching for one recent detection.
+
+    Returns dict with keys: scientific_name, image_url, wikipedia_url.
+    """
+    try:
+        resp = httpx.get(
+            f"https://{hostname}/todays_detections.php",
+            params={
+                "ajax_detections": "true",
+                "hard_limit": "1",
+                "searchterm": species_name,
+            },
+            timeout=5,
+            verify=False,
+        )
+        if resp.status_code >= 400:
+            return {"scientific_name": "", "image_url": "", "wikipedia_url": ""}
+        detections = parse_detections_html(resp.text)
+        if detections:
+            d = detections[0]
+            return {
+                "scientific_name": d.get("scientific_name", ""),
+                "image_url": d.get("image_url", ""),
+                "wikipedia_url": d.get("wikipedia_url", ""),
+            }
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
+        pass
+    return {"scientific_name": "", "image_url": "", "wikipedia_url": ""}
 
 
 def build_species_summary(
     species_names: list[str],
     detections: list[dict],
+    hostname: str | None = None,
 ) -> list[dict]:
     """Build species summary from directory listing and recent detections.
 
@@ -171,14 +211,17 @@ def build_species_summary(
     (from the Caddy directory listing). detections provides metadata
     (scientific name, image, confidence) for species with recent activity.
 
+    If hostname is provided, fetches metadata (image, scientific name,
+    wikipedia URL) for any species not covered by the recent detections.
+
     >>> build_species_summary(
     ...     ["Barn Owl", "Spotted Dove"],
     ...     [
-    ...         {"species": "Spotted Dove", "scientific_name": "Streptopelia chinensis", "confidence": 75, "image_url": "https://example.com/dove.jpg"},
-    ...         {"species": "Spotted Dove", "scientific_name": "Streptopelia chinensis", "confidence": 92, "image_url": ""},
+    ...         {"species": "Spotted Dove", "scientific_name": "Streptopelia chinensis", "confidence": 75, "image_url": "https://example.com/dove.jpg", "wikipedia_url": "https://wikipedia.org/wiki/Streptopelia_chinensis", "filename": ""},
+    ...         {"species": "Spotted Dove", "scientific_name": "Streptopelia chinensis", "confidence": 92, "image_url": "", "wikipedia_url": "", "filename": ""},
     ...     ],
     ... )
-    [{'species': 'Spotted Dove', 'scientific_name': 'Streptopelia chinensis', 'image_url': 'https://example.com/dove.jpg', 'recent_count': 2, 'max_confidence': 92}, {'species': 'Barn Owl', 'scientific_name': '', 'image_url': '', 'recent_count': 0, 'max_confidence': 0}]
+    [{'species': 'Spotted Dove', 'scientific_name': 'Streptopelia chinensis', 'image_url': 'https://example.com/dove.jpg', 'wikipedia_url': 'https://wikipedia.org/wiki/Streptopelia_chinensis', 'recent_count': 2, 'max_confidence': 92}, {'species': 'Barn Owl', 'scientific_name': '', 'image_url': '', 'wikipedia_url': '', 'recent_count': 0, 'max_confidence': 0}]
     """
     # Index detection data by species
     det_data: dict[str, dict] = {}
@@ -188,6 +231,7 @@ def build_species_summary(
             det_data[name] = {
                 "scientific_name": d.get("scientific_name", ""),
                 "image_url": d.get("image_url", ""),
+                "wikipedia_url": d.get("wikipedia_url", ""),
                 "recent_count": 0,
                 "max_confidence": 0,
             }
@@ -197,6 +241,24 @@ def build_species_summary(
         )
         if not det_data[name]["image_url"] and d.get("image_url"):
             det_data[name]["image_url"] = d["image_url"]
+        if not det_data[name]["wikipedia_url"] and d.get("wikipedia_url"):
+            det_data[name]["wikipedia_url"] = d["wikipedia_url"]
+
+    # For species without metadata, fetch one detection to get image/sci_name/wiki
+    if hostname:
+        for name in species_names:
+            if name not in det_data or not det_data[name]["image_url"]:
+                meta = fetch_species_metadata(hostname, name)
+                if name not in det_data:
+                    det_data[name] = {
+                        "recent_count": 0,
+                        "max_confidence": 0,
+                        **meta,
+                    }
+                else:
+                    for key in ("scientific_name", "image_url", "wikipedia_url"):
+                        if not det_data[name][key] and meta[key]:
+                            det_data[name][key] = meta[key]
 
     # Build result: all species from directory, enriched with detection data
     all_species = set(species_names) | set(det_data.keys())
@@ -207,6 +269,7 @@ def build_species_summary(
             "species": name,
             "scientific_name": info.get("scientific_name", ""),
             "image_url": info.get("image_url", ""),
+            "wikipedia_url": info.get("wikipedia_url", ""),
             "recent_count": info.get("recent_count", 0),
             "max_confidence": info.get("max_confidence", 0),
         })

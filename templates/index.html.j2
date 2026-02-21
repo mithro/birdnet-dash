@@ -70,6 +70,10 @@
     padding: 0.75rem; display: flex; gap: 0.75rem;
     align-items: center; flex: 0 1 auto; min-width: 250px;
     border-left: 3px solid #ffd60a;
+    text-decoration: none; color: inherit;
+  }
+  .discovery-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   }
   .discovery-card .disc-img {
     width: 48px; height: 48px; border-radius: 6px;
@@ -148,11 +152,12 @@
   .species-grid {
     display: flex; flex-wrap: wrap; gap: 0.75rem;
   }
-  .species-card {
+  a.species-card, .species-card {
     background: #f8fdf9; border: 1px solid #e8f5e9; border-radius: 10px;
     padding: 0.75rem; text-align: center;
     flex: 0 1 auto; min-width: 140px; max-width: 180px;
     transition: box-shadow 0.15s;
+    text-decoration: none; color: inherit; display: block;
   }
   .species-card:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -191,11 +196,15 @@
   .detections-flow {
     display: flex; flex-wrap: wrap; gap: 0.5rem;
   }
-  .detection-chip {
+  a.detection-chip, .detection-chip {
     display: flex; gap: 0.5rem; align-items: center;
     background: #f8fdf9; border: 1px solid #e8f5e9;
     border-radius: 8px; padding: 0.4rem 0.65rem;
     font-size: 0.8rem; flex: 0 1 auto;
+    text-decoration: none; color: inherit;
+  }
+  a.detection-chip:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   }
   .detection-chip .det-img {
     width: 32px; height: 32px; border-radius: 4px;
@@ -217,6 +226,15 @@
   }
   .detection-chip .det-conf {
     font-weight: 600; font-size: 0.75rem; white-space: nowrap;
+  }
+
+  /* Yesterday species tags */
+  .yesterday-tags {
+    display: flex; flex-wrap: wrap; gap: 0.4rem;
+  }
+  .yesterday-tag {
+    background: #f0f7f4; border: 1px solid #d8f3dc; border-radius: 6px;
+    padding: 0.25rem 0.6rem; font-size: 0.8rem; color: #2d6a4f;
   }
 
   .offline {
@@ -273,7 +291,7 @@
 <div class="section-heading">Recent Discoveries (Last 7 Days)</div>
 <div class="discoveries-grid">
   {% for r in recent_new_species %}
-  <div class="discovery-card">
+  <a class="discovery-card" href="https://en.wikipedia.org/wiki/{{ r.species | replace(' ', '_') }}" target="_blank" rel="noopener">
     {% if r.image_url %}
     <img class="disc-img" src="{{ r.image_url }}" alt="{{ r.species }}" loading="lazy">
     {% else %}
@@ -286,7 +304,7 @@
       {% endif %}
       <div class="disc-meta">{{ r.sites | map(attribute='slug') | join(', ') }} &middot; {{ r.first_seen[:10] }}</div>
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endif %}
@@ -336,7 +354,7 @@
     {% if site.species %}
     <div class="species-grid">
       {% for s in site.species %}
-      <div class="species-card">
+      <a class="species-card" href="https://{{ site.best_host }}/views.php?view=Species+Stats&species={{ s.species | urlencode }}" target="_blank" rel="noopener">
         {% if s.image_url %}
         <img class="sp-img" src="{{ s.image_url }}" alt="{{ s.species }}" loading="lazy">
         {% else %}
@@ -350,7 +368,7 @@
         <div class="sp-count">{{ s.recent_count }} recent</div>
         <div class="sp-conf {% if s.max_confidence >= 80 %}conf-high{% elif s.max_confidence >= 60 %}conf-mid{% else %}conf-low{% endif %}">&#x25cf; {{ s.max_confidence }}%</div>
         {% endif %}
-      </div>
+      </a>
       {% endfor %}
     </div>
     {% else %}
@@ -358,12 +376,27 @@
     {% endif %}
   </div>
 
+  {% if site.yesterday_species %}
+  <div class="site-section" style="border-top: 1px solid #e8f5e9;">
+    <div class="site-section-title">Species Detected Yesterday</div>
+    <div class="yesterday-tags">
+      {% for name in site.yesterday_species %}
+      <span class="yesterday-tag">{{ name }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="site-section" style="border-top: 1px solid #e8f5e9;">
     <div class="site-section-title">Recent Detections</div>
     {% if site.detections %}
     <div class="detections-flow">
       {% for d in site.detections %}
-      <div class="detection-chip">
+      {% if d.filename %}
+      <a class="detection-chip" href="https://{{ site.best_host }}/index.php?filename={{ d.filename | urlencode }}" target="_blank" rel="noopener">
+      {% else %}
+      <a class="detection-chip" href="https://{{ site.best_host }}/views.php?view=Todays+Detections" target="_blank" rel="noopener">
+      {% endif %}
         {% if d.image_url %}
         <img class="det-img" src="{{ d.image_url }}" alt="{{ d.species }}" loading="lazy">
         {% else %}
@@ -375,7 +408,7 @@
         <span class="det-sci">{{ d.scientific_name }}</span>
         {% endif %}
         <span class="det-conf {% if d.confidence >= 80 %}conf-high{% elif d.confidence >= 60 %}conf-mid{% else %}conf-low{% endif %}">{{ d.confidence }}%</span>
-      </div>
+      </a>
       {% endfor %}
     </div>
     {% else %}
