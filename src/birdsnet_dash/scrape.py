@@ -169,11 +169,80 @@ def parse_detections_html(html: str) -> list[dict]:
     return detections
 
 
+def fetch_wikipedia_thumbnail(search_term: str) -> str:
+    """Fetch a thumbnail image URL from Wikipedia's REST API.
+
+    Tries the search_term as a page title (spaces replaced with underscores).
+    Returns the thumbnail URL or empty string if not found.
+
+    >>> fetch_wikipedia_thumbnail("") == ""
+    True
+    """
+    if not search_term:
+        return ""
+    slug = search_term.strip().replace(" ", "_")
+    try:
+        resp = httpx.get(
+            f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}",
+            timeout=5,
+            headers={"User-Agent": "birdsnet-dash/0.1 (https://birds.mithis.com/)"},
+        )
+        if resp.status_code >= 400:
+            return ""
+        data = resp.json()
+        # Prefer originalimage for higher resolution, fall back to thumbnail
+        original = data.get("originalimage", {}).get("source", "")
+        if original:
+            return original
+        return data.get("thumbnail", {}).get("source", "")
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
+        return ""
+    except Exception:
+        return ""
+
+
+def fetch_species_stats_page(hostname: str, species_name: str) -> dict:
+    """Scrape scientific name and wikipedia URL from BirdNET-Pi species stats page.
+
+    This works even when the species has no detections today, unlike
+    todays_detections.php which only returns today's data.
+
+    Returns dict with keys: scientific_name, wikipedia_url.
+    """
+    try:
+        resp = httpx.get(
+            f"https://{hostname}/views.php",
+            params={"view": "Species Stats", "species": species_name},
+            timeout=5,
+            verify=False,
+        )
+        if resp.status_code >= 400:
+            return {"scientific_name": "", "wikipedia_url": ""}
+        # Wikipedia link contains the scientific name
+        wiki_match = re.search(r'href="(https://wikipedia\.org/wiki/([^"]+))"', resp.text)
+        if wiki_match:
+            return {
+                "scientific_name": wiki_match.group(2).replace("_", " "),
+                "wikipedia_url": wiki_match.group(1),
+            }
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
+        pass
+    return {"scientific_name": "", "wikipedia_url": ""}
+
+
 def fetch_species_metadata(hostname: str, species_name: str) -> dict:
-    """Fetch metadata for a single species by searching for one recent detection.
+    """Fetch metadata for a single species from multiple sources.
+
+    Tries in order:
+    1. Today's detections (has image, scientific name, wikipedia URL)
+    2. Species stats page (has scientific name, wikipedia URL)
+    3. Wikipedia API thumbnail (has image, using scientific name)
 
     Returns dict with keys: scientific_name, image_url, wikipedia_url.
     """
+    result = {"scientific_name": "", "image_url": "", "wikipedia_url": ""}
+
+    # Try today's detections first (fastest, has all metadata)
     try:
         resp = httpx.get(
             f"https://{hostname}/todays_detections.php",
@@ -185,19 +254,37 @@ def fetch_species_metadata(hostname: str, species_name: str) -> dict:
             timeout=5,
             verify=False,
         )
-        if resp.status_code >= 400:
-            return {"scientific_name": "", "image_url": "", "wikipedia_url": ""}
-        detections = parse_detections_html(resp.text)
-        if detections:
-            d = detections[0]
-            return {
-                "scientific_name": d.get("scientific_name", ""),
-                "image_url": d.get("image_url", ""),
-                "wikipedia_url": d.get("wikipedia_url", ""),
-            }
+        if resp.status_code < 400:
+            detections = parse_detections_html(resp.text)
+            if detections:
+                d = detections[0]
+                result = {
+                    "scientific_name": d.get("scientific_name", ""),
+                    "image_url": d.get("image_url", ""),
+                    "wikipedia_url": d.get("wikipedia_url", ""),
+                }
+                if result["image_url"]:
+                    return result
     except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
         pass
-    return {"scientific_name": "", "image_url": "", "wikipedia_url": ""}
+
+    # Fall back to species stats page for scientific name / wikipedia
+    if not result["scientific_name"]:
+        stats = fetch_species_stats_page(hostname, species_name)
+        if stats["scientific_name"]:
+            result["scientific_name"] = stats["scientific_name"]
+        if stats["wikipedia_url"] and not result["wikipedia_url"]:
+            result["wikipedia_url"] = stats["wikipedia_url"]
+
+    # Fall back to Wikipedia API for image
+    if not result["image_url"]:
+        # Try scientific name first (more reliable), then common name
+        if result["scientific_name"]:
+            result["image_url"] = fetch_wikipedia_thumbnail(result["scientific_name"])
+        if not result["image_url"]:
+            result["image_url"] = fetch_wikipedia_thumbnail(species_name)
+
+    return result
 
 
 def build_species_summary(
