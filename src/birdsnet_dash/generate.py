@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +24,11 @@ _TEMPLATE_SEARCH_PATHS = [
     _PACKAGE_DIR.parent.parent / "templates",  # development layout (repo root)
 ]
 
+_STATIC_SEARCH_PATHS = [
+    _INSTALL_ROOT / "static",                  # installed layout (/opt/birdsnet-dash/static)
+    _PACKAGE_DIR.parent.parent / "static",     # development layout (repo root)
+]
+
 
 def find_template_dir() -> Path:
     for path in _TEMPLATE_SEARCH_PATHS:
@@ -31,6 +37,23 @@ def find_template_dir() -> Path:
     raise FileNotFoundError(
         f"Could not find templates/index.html.j2 in any of: {_TEMPLATE_SEARCH_PATHS}"
     )
+
+
+def find_static_dir() -> Path | None:
+    for path in _STATIC_SEARCH_PATHS:
+        if path.is_dir():
+            return path
+    return None
+
+
+def copy_static_files(output_dir: str) -> None:
+    """Copy static assets (favicon, etc.) to the output directory."""
+    static_dir = find_static_dir()
+    if static_dir is None:
+        return
+    for item in static_dir.iterdir():
+        if item.is_file():
+            shutil.copy2(item, os.path.join(output_dir, item.name))
 
 
 def load_species_history(data_dir: str) -> dict:
@@ -208,3 +231,6 @@ def generate(output_dir: str, data_dir: str | None = None) -> None:
     except BaseException:
         os.unlink(tmp_path)
         raise
+
+    # Copy static assets (favicon, etc.)
+    copy_static_files(output_dir)

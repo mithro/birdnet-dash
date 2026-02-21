@@ -18,6 +18,7 @@ install:  ## Install to /opt/birdsnet-dash with uv venv + config files
 	sudo uv venv --allow-existing $(INSTALL_DIR)
 	sudo uv pip install --python $(INSTALL_DIR)/bin/python .
 	sudo cp -r templates $(INSTALL_DIR)/
+	sudo cp -r static $(INSTALL_DIR)/
 	# Install config files
 	sudo cp etc/nginx/birds.mithis.com.conf /etc/nginx/sites-available/
 	sudo ln -sf /etc/nginx/sites-available/birds.mithis.com.conf /etc/nginx/sites-enabled/
