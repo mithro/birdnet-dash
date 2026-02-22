@@ -223,8 +223,9 @@
     font-size: 0.75rem; white-space: nowrap;
   }
   .detection-chip .det-name { font-weight: 600; color: #1b4332; }
-  .detection-chip .det-sci {
-    font-style: italic; color: #999; font-size: 0.7rem;
+  .detection-chip .det-count {
+    background: #e8f5e9; color: #2d6a4f; font-weight: 700;
+    font-size: 0.7rem; padding: 0.1rem 0.35rem; border-radius: 4px;
   }
   .detection-chip .det-conf {
     font-weight: 600; font-size: 0.75rem; white-space: nowrap;
@@ -409,12 +410,10 @@
         {% else %}
         <div class="det-img-placeholder">&#x1f426;</div>
         {% endif %}
-        <span class="det-time">{{ d.time }}</span>
         <span class="det-name">{{ d.species }}</span>
-        {% if d.scientific_name %}
-        <span class="det-sci">{{ d.scientific_name }}</span>
-        {% endif %}
+        {% if d.count > 1 %}<span class="det-count">{{ d.count }}x</span>{% endif %}
         <span class="det-conf {% if d.confidence >= 80 %}conf-high{% elif d.confidence >= 60 %}conf-mid{% else %}conf-low{% endif %}">{{ d.confidence }}%</span>
+        <span class="det-time">{{ d.time }}</span>
       </a>
       {% endfor %}
     </div>

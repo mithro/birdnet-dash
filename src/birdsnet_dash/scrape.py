@@ -169,6 +169,47 @@ def parse_detections_html(html: str) -> list[dict]:
     return detections
 
 
+def group_detections(detections: list[dict]) -> list[dict]:
+    """Group detections by species, keeping the latest detection's details.
+
+    Input detections must be ordered most-recent-first.
+    Returns one entry per species with count and max confidence.
+
+    >>> group_detections([
+    ...     {"species": "Dove", "scientific_name": "S. chinensis", "time": "14:00:00", "confidence": 90, "image_url": "img1", "wikipedia_url": "w1", "filename": "f1"},
+    ...     {"species": "Owl", "scientific_name": "T. alba", "time": "13:30:00", "confidence": 75, "image_url": "img2", "wikipedia_url": "w2", "filename": "f2"},
+    ...     {"species": "Dove", "scientific_name": "S. chinensis", "time": "12:00:00", "confidence": 95, "image_url": "", "wikipedia_url": "", "filename": "f3"},
+    ... ])
+    [{'species': 'Dove', 'scientific_name': 'S. chinensis', 'time': '14:00:00', 'confidence': 95, 'image_url': 'img1', 'wikipedia_url': 'w1', 'filename': 'f1', 'count': 2}, {'species': 'Owl', 'scientific_name': 'T. alba', 'time': '13:30:00', 'confidence': 75, 'image_url': 'img2', 'wikipedia_url': 'w2', 'filename': 'f2', 'count': 1}]
+    """
+    grouped: dict[str, dict] = {}
+    order: list[str] = []
+    for d in detections:
+        name = d["species"]
+        if name not in grouped:
+            order.append(name)
+            # First occurrence is the latest (input is most-recent-first)
+            grouped[name] = {
+                "species": name,
+                "scientific_name": d.get("scientific_name", ""),
+                "time": d.get("time", ""),
+                "confidence": d.get("confidence", 0),
+                "image_url": d.get("image_url", ""),
+                "wikipedia_url": d.get("wikipedia_url", ""),
+                "filename": d.get("filename", ""),
+                "count": 0,
+            }
+        grouped[name]["count"] += 1
+        grouped[name]["confidence"] = max(
+            grouped[name]["confidence"], d.get("confidence", 0)
+        )
+        if not grouped[name]["image_url"] and d.get("image_url"):
+            grouped[name]["image_url"] = d["image_url"]
+        if not grouped[name]["wikipedia_url"] and d.get("wikipedia_url"):
+            grouped[name]["wikipedia_url"] = d["wikipedia_url"]
+    return [grouped[name] for name in order]
+
+
 def fetch_wikipedia_thumbnail(search_term: str) -> str:
     """Fetch a thumbnail image URL from Wikipedia's REST API.
 

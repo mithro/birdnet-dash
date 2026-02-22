@@ -9,6 +9,7 @@ from birdsnet_dash.scrape import (
     fetch_detections,
     fetch_species_list,
     fetch_stats,
+    group_detections,
 )
 
 
@@ -133,7 +134,7 @@ def _check_site(site: dict) -> dict:
     result["stats"] = f_stats.result()
     species_names = f_species.result()
     detections = f_detect.result()
-    result["detections"] = detections
+    result["detections"] = group_detections(detections)
     yesterday_names = f_yester.result()
 
     # Build species summaries (metadata fetches parallelised internally)
