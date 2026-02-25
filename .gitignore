@@ -1,5 +1,28 @@
-.venv/
-site/
-data/
+# Python
 __pycache__/
 *.egg-info/
+*.pyc
+.venv/
+
+# Build output
+site/
+
+# Persistent data
+data/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
