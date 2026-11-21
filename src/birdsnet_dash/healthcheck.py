@@ -8,8 +8,10 @@ from birdsnet_dash.scrape import (
     build_species_summary,
     fetch_detections,
     fetch_species_list,
+    fetch_species_names,
     fetch_stats,
     group_detections,
+    resolve_species_names,
 )
 
 
@@ -123,19 +125,26 @@ def _check_site(site: dict) -> dict:
         result["yesterday_species"] = []
         return result
 
-    # Fetch stats, species list, detections, and yesterday list concurrently
+    # Fetch stats, species lists, detections and real species names concurrently
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=5) as pool:
         f_stats = pool.submit(fetch_stats, best_host)
         f_species = pool.submit(fetch_species_list, best_host)
         f_detect = pool.submit(fetch_detections, best_host, 20)
         f_yester = pool.submit(fetch_species_list, best_host, yesterday)
+        f_known = pool.submit(fetch_species_names, best_host)
 
     result["stats"] = f_stats.result()
-    species_names = f_species.result()
     detections = f_detect.result()
     result["detections"] = group_detections(detections)
-    yesterday_names = f_yester.result()
+
+    # The species lists come from folder names, which have lost their
+    # apostrophes; map them back to the real names. Detection names are real
+    # too, so they still cover recent species if the Species Stats fetch fails.
+    # Later entries win in resolve_species_names, so Species Stats goes last.
+    known_names = [d["species"] for d in detections] + f_known.result()
+    species_names = resolve_species_names(f_species.result(), known_names)
+    yesterday_names = resolve_species_names(f_yester.result(), known_names)
 
     # Build species summaries (metadata fetches parallelised internally)
     result["species"] = build_species_summary(

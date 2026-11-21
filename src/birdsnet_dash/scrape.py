@@ -1,3 +1,4 @@
+import html
 import re
 from datetime import date
 
@@ -106,6 +107,90 @@ def parse_species_dirs(html: str) -> list[str]:
     folders = re.findall(r'href="\./([^/"]+)/"', html)
     species = [f.replace("_", " ") for f in folders]
     return sorted(species)
+
+
+def species_folder_name(common_name: str) -> str:
+    """Return the folder name BirdNET-Pi uses for a species' recordings.
+
+    Mirrors BirdNET-Pi's ``common_name_safe`` (scripts/utils/classes.py):
+    apostrophes are dropped and spaces become underscores. Dropping the
+    apostrophe is lossy, so folder names cannot be turned back into
+    species names by string replacement alone.
+
+    >>> species_folder_name("Gilbert's Whistler")
+    'Gilberts_Whistler'
+    >>> species_folder_name("Willie-wagtail")
+    'Willie-wagtail'
+    """
+    return common_name.replace("'", "").replace(" ", "_")
+
+
+def resolve_species_names(folder_species: list[str], known_names: list[str]) -> list[str]:
+    """Map species names derived from folder names back to BirdNET-Pi's real names.
+
+    folder_species are names as returned by parse_species_dirs() (underscores
+    already turned into spaces, apostrophes lost). known_names are real
+    common names, e.g. from parse_species_names(). Names with no match are
+    kept as-is, so a failed known_names fetch degrades to the old behaviour.
+
+    >>> resolve_species_names(
+    ...     ["Gilberts Whistler", "Galah", "Mystery Bird"],
+    ...     ["Galah", "Gilbert's Whistler", "Horsfield's Bronze-Cuckoo"],
+    ... )
+    ["Gilbert's Whistler", 'Galah', 'Mystery Bird']
+    >>> resolve_species_names(["Gilberts Whistler"], [])
+    ['Gilberts Whistler']
+    """
+    by_folder = {species_folder_name(name): name for name in known_names}
+    return [by_folder.get(species_folder_name(name), name) for name in folder_species]
+
+
+def parse_species_names(html_text: str) -> list[str]:
+    """Parse every species' real common name from a BirdNET-Pi Species Stats page.
+
+    The page has one ``<button name="species" value="...">`` per species
+    ever detected; the value is the name exactly as stored in the database.
+
+    >>> parse_species_names(
+    ...     '<button type="submit" name="species" value="Gilbert&#39;s Whistler">G</button>'
+    ...     '<button type="submit" name="species" value="Galah">Galah</button>'
+    ...     '<button type="submit" name="species" value="Galah">Galah</button>'
+    ...     '<button type="submit" name="view" value="Overview">Overview</button>'
+    ... )
+    ['Galah', "Gilbert's Whistler"]
+    >>> parse_species_names('no buttons')
+    []
+    """
+    buttons = re.findall(r"<button\b[^>]*>", html_text)
+    names = set()
+    for button in buttons:
+        if not re.search(r'\bname="species"', button):
+            continue
+        value = re.search(r'\bvalue="([^"]*)"', button)
+        if value and value.group(1):
+            names.add(html.unescape(value.group(1)))
+    return sorted(names)
+
+
+def fetch_species_names(hostname: str) -> list[str]:
+    """Fetch the real common names of all species a BirdNET-Pi has detected.
+
+    Returns [] if the host is unreachable or the page cannot be fetched.
+    """
+    try:
+        resp = httpx.get(
+            f"https://{hostname}/views.php",
+            params={"view": "Species Stats"},
+            timeout=10,
+            verify=False,
+        )
+        if resp.status_code >= 400:
+            return []
+        return parse_species_names(resp.text)
+    except httpx.HTTPError:
+        # Any transport failure (incl. ReadError on this large page) must not
+        # abort the run; callers fall back to folder/detection names.
+        return []
 
 
 def fetch_detections(hostname: str, limit: int = 20) -> list[dict]:
