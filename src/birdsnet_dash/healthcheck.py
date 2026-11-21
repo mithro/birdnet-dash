@@ -141,7 +141,8 @@ def _check_site(site: dict) -> dict:
     # The species lists come from folder names, which have lost their
     # apostrophes; map them back to the real names. Detection names are real
     # too, so they still cover recent species if the Species Stats fetch fails.
-    known_names = f_known.result() + [d["species"] for d in detections]
+    # Later entries win in resolve_species_names, so Species Stats goes last.
+    known_names = [d["species"] for d in detections] + f_known.result()
     species_names = resolve_species_names(f_species.result(), known_names)
     yesterday_names = resolve_species_names(f_yester.result(), known_names)
 
