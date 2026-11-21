@@ -114,6 +114,22 @@ def detect_new_species(sites: list[dict], history: dict, now: str) -> list[dict]
     On subsequent runs, species not in history are flagged as new.
     Mutates history dict in place. Returns list of new species dicts,
     grouped by species name (one entry per species with a list of sites).
+
+    A name whose folder form matches a history key is never new: the
+    apostrophe-less alias of a known name is ignored, and an alias-only
+    history entry is renamed to the real name, keeping its first_seen.
+
+    >>> h = {"m": {"Gilberts Whistler": {"first_seen": "old"}, "Galah": {"first_seen": "old"}}}
+    >>> site = {"slug": "m", "name": "M", "species": [{"species": "Gilbert's Whistler"}]}
+    >>> detect_new_species([site], h, "now")
+    []
+    >>> h["m"]["Gilbert's Whistler"], "Gilberts Whistler" in h["m"]
+    ({'first_seen': 'old'}, False)
+    >>> site["species"] = [{"species": "Gilberts Whistler"}, {"species": "Weebill"}]
+    >>> [n["species"] for n in detect_new_species([site], h, "now")]
+    ['Weebill']
+    >>> sorted(h["m"])
+    ['Galah', "Gilbert's Whistler", 'Weebill']
     """
     # First pass: update history and collect raw new sightings
     raw_new: list[dict] = []
@@ -131,8 +147,20 @@ def detect_new_species(sites: list[dict], history: dict, now: str) -> list[dict]
                 }
             continue
 
+        # Match by folder name too, so an apostrophe-less spelling and the real
+        # name count as the same species (see scrape.species_folder_name).
+        by_folder = {species_folder_name(key): key for key in history[slug]}
         for s in site.get("species", []):
             name = s["species"]
+            existing = by_folder.get(species_folder_name(name))
+            if name not in history[slug] and existing is not None:
+                if "'" in name and "'" not in existing:
+                    # Upgrade an alias-only entry to the real name, keeping first_seen.
+                    history[slug][name] = history[slug].pop(existing)
+                    by_folder[species_folder_name(name)] = name
+                # Otherwise name is the alias of a known real name
+                # (names fetch failed this run): not new, don't record it.
+                continue
             if name not in history[slug]:
                 history[slug][name] = {
                     "scientific_name": s.get("scientific_name", ""),
@@ -234,7 +262,8 @@ def generate(output_dir: str, data_dir: str | None = None) -> None:
 
     # Species tracking
     history = load_species_history(data_dir)
-    drop_folder_name_aliases(history)
+    for slug, alias in drop_folder_name_aliases(history):
+        print(f"species history: dropped alias {alias!r} for {slug} (real name present)")
     new_species = detect_new_species(sites, history, now_iso)
     recent_new_species = build_recent_new_species(history)
     save_species_history(data_dir, history)
