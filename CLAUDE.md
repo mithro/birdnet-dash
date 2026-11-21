@@ -22,9 +22,16 @@ make generate
 uv run ruff check src/
 uv run ruff format --check src/
 
-# Deploy to /opt/birdsnet-dash (requires sudo, installs configs for nginx/dnsmasq/cron)
-make install
+# Deploy (requires sudo; run from an up-to-date main checkout)
+make install-app     # code/template change: /opt/birdsnet-dash only, then one generate run
+make install-config  # etc/ change: nginx site + cron job, reload nginx, scoped etckeeper commit
+make install         # both (first install / full resync)
 ```
+
+Deploy notes:
+- **A code change needs only `make install-app`.** It touches nothing in `/etc` and restarts nothing; cron runs the new code within 5 minutes. Run it from the commit you mean to deploy: installing an older checkout silently rolls the live dashboard back.
+- `install-app` rewrites `data/species_seen.json` (it runs `generate`). Back it up first if the change touches species tracking.
+- DNS for `birds.mithis.com` is **not** managed here. It has been a signed pdns zone on ten64 since 2026-09-20 (etckeeper `8a77ce12`); see `~/local/net/CLAUDE.md`. The old dnsmasq cname file was removed from this repo.
 
 ## Architecture
 
