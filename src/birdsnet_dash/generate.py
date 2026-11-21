@@ -8,6 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from birdsnet_dash.healthcheck import check_all_sites
+from birdsnet_dash.scrape import species_folder_name
 
 # Look for templates in several locations.
 # _PACKAGE_DIR is e.g. /opt/birdsnet-dash/lib/python3.13/site-packages/birdsnet_dash
@@ -63,6 +64,32 @@ def load_species_history(data_dir: str) -> dict:
         return {}
     with open(path) as f:
         return json.load(f)
+
+
+def drop_folder_name_aliases(history: dict) -> list[tuple[str, str]]:
+    """Remove history entries that are only the folder-name spelling of a real name.
+
+    Before species names were resolved, a species such as "Gilbert's Whistler"
+    could also be recorded as "Gilberts Whistler" (its folder name, apostrophe
+    lost). Drop such an alias when the real name is present for the same site.
+    Mutates history in place; returns the (slug, alias) pairs removed.
+
+    >>> h = {"monarto": {"Gilbert's Whistler": {}, "Gilberts Whistler": {}, "Galah": {}}}
+    >>> drop_folder_name_aliases(h)
+    [('monarto', 'Gilberts Whistler')]
+    >>> sorted(h["monarto"])
+    ['Galah', "Gilbert's Whistler"]
+    >>> drop_folder_name_aliases({"x": {"Gilberts Whistler": {}}})
+    []
+    """
+    removed = []
+    for slug, species in history.items():
+        real_folders = {species_folder_name(name) for name in species if "'" in name}
+        for name in list(species):
+            if "'" not in name and species_folder_name(name) in real_folders:
+                del species[name]
+                removed.append((slug, name))
+    return removed
 
 
 def save_species_history(data_dir: str, history: dict) -> None:
@@ -207,6 +234,7 @@ def generate(output_dir: str, data_dir: str | None = None) -> None:
 
     # Species tracking
     history = load_species_history(data_dir)
+    drop_folder_name_aliases(history)
     new_species = detect_new_species(sites, history, now_iso)
     recent_new_species = build_recent_new_species(history)
     save_species_history(data_dir, history)
