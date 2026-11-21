@@ -187,7 +187,9 @@ def fetch_species_names(hostname: str) -> list[str]:
         if resp.status_code >= 400:
             return []
         return parse_species_names(resp.text)
-    except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
+    except httpx.HTTPError:
+        # Any transport failure (incl. ReadError on this large page) must not
+        # abort the run; callers fall back to folder/detection names.
         return []
 
 
